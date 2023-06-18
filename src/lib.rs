@@ -1,3 +1,52 @@
+//! This library provides means to publish messages to the amazing Foxglove UI in Rust. It
+//! implements part of the Foxglove WebSocket protocol described in
+//! <https://github.com/foxglove/ws-protocol>.
+//!
+//! On its own the protocol does not fix a specific data scheme for the messages. But for Foxglove
+//! to understand the messages it makes sense to follow the well-known serialization schemes
+//! <https://mcap.dev/spec/registry>.
+//!
+//! # Example
+//!
+//! This is an example with single ROS1 channel/topic with the `std_msgs/String` message type.
+//!
+//! ```
+//! use std::{io::Write, time::SystemTime};
+//!
+//! fn build_string_message(data: &str) -> anyhow::Result<Vec<u8>> {
+//!     let mut msg = vec![0; std::mem::size_of::<u32>() + data.len()];
+//!     // ROS 1 message strings are encoded as 4-bytes length and then the byte data.
+//!     let mut w = std::io::Cursor::new(&mut msg);
+//!     w.write(&(data.len() as u32).to_le_bytes())?;
+//!     w.write(data.as_bytes())?;
+//!     Ok(msg)
+//! }
+//!
+//! #[tokio::main]
+//! async fn main() -> anyhow::Result<()> {
+//!     let server = foxglove_ws::FoxgloveWebSocket::new();
+//!     tokio::spawn({
+//!         let server = server.clone();
+//!         async move { server.serve().await }
+//!     });
+//!     let channel = server
+//!         .publish(
+//!             "/data".to_string(),
+//!             "ros1".to_string(),
+//!             "std_msgs/String".to_string(),
+//!             "string data".to_string(),
+//!             "ros1msg".to_string(),
+//!             false,
+//!         )
+//!         .await?;
+//!     channel
+//!         .send(
+//!             SystemTime::now().elapsed().unwrap().as_nanos() as u64,
+//!             &build_string_message("Hello!")?,
+//!         )
+//!         .await?;
+//! }
+//! ```
 use std::{
     collections::HashMap,
     io::{Cursor, Write},
@@ -106,6 +155,7 @@ impl MessageData {
     }
 }
 
+/// Represents a channel to send data with.
 #[derive(Debug)]
 pub struct Channel {
     id: usize,
@@ -117,6 +167,12 @@ pub struct Channel {
 }
 
 impl Channel {
+    /// Sends a message to all subscribed clients for this channel.
+    ///
+    /// # Arguments
+    ///
+    /// * `timestamp_ns` - Point in time this message was published/created/logged.
+    /// * `data` - Data buffer to publish.
     pub async fn send(&self, timestamp_ns: u64, data: &[u8]) -> anyhow::Result<()> {
         let message_data = MessageData {
             timestamp_ns,
@@ -158,6 +214,7 @@ struct ChannelState {
     channels: Channels,
 }
 
+/// The service WebSocket. It tracks the connected clients and takes care of subscriptions.
 #[derive(Clone, Debug, Default)]
 pub struct FoxgloveWebSocket {
     clients: Arc<ClientState>,
@@ -322,10 +379,14 @@ async fn client_connected(ws: WebSocket, clients: Arc<ClientState>, channels: Ar
 }
 
 impl FoxgloveWebSocket {
+    /// Creates a new Foxglove WebSocket service.
     pub fn new() -> Self {
         FoxgloveWebSocket::default()
     }
 
+    /// Serves connecting clients.
+    ///
+    /// It listens on ws://127.0.0.1:8765.
     pub async fn serve(&self) {
         let clients = self.clients.clone();
         let clients = warp::any().map(move || clients.clone());
@@ -349,6 +410,21 @@ impl FoxgloveWebSocket {
         warp::serve(foxglove_ws).run(([127, 0, 0, 1], 8765)).await;
     }
 
+    /// Advertise a new publisher.
+    ///
+    /// There are several different message encoding schemes that are supported by Foxglove.
+    /// <https://mcap.dev/spec/registry> contains more information on how to set the arguments to
+    /// this function.
+    ///
+    /// # Arguments
+    ///
+    /// * `topic` - Name of the topic of this new channel.
+    /// * `encoding` - Channel message encoding.
+    /// * `schema_name` - Name of the schema.
+    /// * `schema` - Schema describing the message format.
+    /// * `scheme_encoding` - Encoding of this channel's schema.
+    /// * `is_latching` - Whether messages sent of this channel are sticky. Each newly connecting
+    ///    client will be message the last sticky message that was sent on this channel.
     pub async fn publish(
         &self,
         topic: String,
