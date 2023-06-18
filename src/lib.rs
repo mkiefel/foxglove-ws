@@ -272,7 +272,7 @@ async fn client_connected(ws: WebSocket, clients: Arc<ClientState>, channels: Ar
     // Split the socket into a sender and receive of messages.
     let (mut user_ws_tx, mut user_ws_rx) = ws.split();
 
-    let client_id = Uuid::now_v7();
+    let client_id = Uuid::new_v4();
     log::info!("Client {} connected.", client_id);
 
     // Send server info.
