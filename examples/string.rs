@@ -15,7 +15,7 @@ async fn main() -> anyhow::Result<()> {
     let server = foxglove_ws::FoxgloveWebSocket::new();
     tokio::spawn({
         let server = server.clone();
-        async move { server.serve().await }
+        async move { server.serve(([127, 0, 0, 1], 8765)).await }
     });
     let channel = server
         .publish(

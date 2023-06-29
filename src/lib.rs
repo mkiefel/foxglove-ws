@@ -27,7 +27,7 @@
 //!     let server = foxglove_ws::FoxgloveWebSocket::new();
 //!     tokio::spawn({
 //!         let server = server.clone();
-//!         async move { server.serve().await }
+//!         async move { server.serve(([127, 0, 0, 1], 8765)).await }
 //!     });
 //!     let channel = server
 //!         .publish(
@@ -51,6 +51,7 @@ use std::{
     collections::HashMap,
     io::{Cursor, Write},
     mem::size_of,
+    net::SocketAddr,
     sync::{
         atomic::{AtomicUsize, Ordering},
         Arc,
@@ -386,8 +387,10 @@ impl FoxgloveWebSocket {
 
     /// Serves connecting clients.
     ///
-    /// It listens on ws://127.0.0.1:8765.
-    pub async fn serve(&self) {
+    /// # Arguments
+    ///
+    /// `addr` -- Address to listen on.
+    pub async fn serve(&self, addr: impl Into<SocketAddr>) {
         let clients = self.clients.clone();
         let clients = warp::any().map(move || clients.clone());
         let channels = self.channels.clone();
@@ -407,7 +410,7 @@ impl FoxgloveWebSocket {
                     ))
                 }),
         );
-        warp::serve(foxglove_ws).run(([127, 0, 0, 1], 8765)).await;
+        warp::serve(foxglove_ws).run(addr).await;
     }
 
     /// Advertise a new publisher.
