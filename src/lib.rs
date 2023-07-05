@@ -335,7 +335,8 @@ async fn client_connected(ws: WebSocket, clients: Arc<ClientState>, channels: Ar
         return;
     }
 
-    let (tx, rx) = mpsc::channel(20);
+    // TODO(mkiefel): Add per channel queue sizes.
+    let (tx, rx) = mpsc::channel(10);
     let mut rx = ReceiverStream::new(rx);
 
     // Setup the sender queue task.
