@@ -115,8 +115,6 @@ enum ClientMessage {
     Unsubscribe {
         subscription_ids: Vec<ClientChannelId>,
     },
-    #[serde(rename_all = "camelCase")]
-    Close {},
 }
 
 #[derive(Debug)]
@@ -271,7 +269,9 @@ async fn handle_client_msg(
     } else if ws_msg.is_binary() {
         return Err(anyhow!("Got binary message: unhandled at the moment."));
     } else if ws_msg.is_close() {
-        ClientMessage::Close {}
+        // Closing the connection is handled in the general loop for the client.
+        // Nothing is left to do here.
+        return Ok(());
     } else {
         return Err(anyhow!(
             "Got strage message, neither text nor binary: unhandled at the moment. {:?}",
@@ -317,10 +317,6 @@ async fn handle_client_msg(
             client
                 .subscriptions
                 .retain(|_, subscription_id| !subscription_ids.contains(subscription_id));
-        }
-        ClientMessage::Close {} => {
-            log::debug!("Client {} closed.", client_id);
-            clients.remove(client_id);
         }
     }
     Ok(())
@@ -377,6 +373,9 @@ async fn client_connected(ws: WebSocket, clients: Arc<ClientState>, channels: Ar
             break;
         }
     }
+
+    log::debug!("Client {} closed.", client_id);
+    clients.clients.write().await.remove(&client_id);
 }
 
 impl FoxgloveWebSocket {
