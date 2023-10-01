@@ -397,17 +397,17 @@ impl FoxgloveWebSocket {
         let channels = warp::any().map(move || channels.clone());
         let foxglove_ws = warp::path::end().and(
             warp::ws()
-                .and(warp::filters::header::value("sec-websocket-protocol"))
                 .and(clients)
                 .and(channels)
-                .map(|ws: warp::ws::Ws, proto, clients, channels| {
-                    let reply =
-                        ws.on_upgrade(move |socket| client_connected(socket, clients, channels));
-                    Ok(warp::reply::with_header(
+                .map(|ws: warp::ws::Ws, clients, channels| {
+                    ws.on_upgrade(move |socket| client_connected(socket, clients, channels))
+                })
+                .map(|reply| {
+                    warp::reply::with_header(
                         reply,
-                        "sec-websocket-protocol",
-                        proto,
-                    ))
+                        "Sec-WebSocket-Protocol",
+                        "foxglove.websocket.v1",
+                    )
                 }),
         );
         warp::serve(foxglove_ws).run(addr).await;
